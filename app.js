@@ -136,21 +136,27 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  function escapeAndLinkify(text) {
-    if (!text) return "";
-    let safeText = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  function renderTextInto(container, text) {
     const urlRegex = /(https?:\/\/[^\s]+)/g;
-    
-    // Fixt den Bug, wo Punkte am Satzende in die URL gezogen werden
-    return safeText.replace(urlRegex, (url) => {
-      let cleanUrl = url;
-      let suffix = "";
-      if (/[.,;!?]$/.test(url)) {
-        suffix = url.slice(-1);
-        cleanUrl = url.slice(0, -1);
+    let last = 0, m;
+    while ((m = urlRegex.exec(text)) !== null) {
+      container.appendChild(document.createTextNode(text.slice(last, m.index)));
+      let url = m[0], suffix = "";
+      if (/[.,;!?)]$/.test(url)) { suffix = url.slice(-1); url = url.slice(0, -1); }
+      let ok = false;
+      try { const u = new URL(url); ok = (u.protocol === "https:" || u.protocol === "http:"); } catch (e) {}
+      if (ok) {
+        const a = document.createElement("a");
+        a.href = url; a.textContent = url;
+        a.target = "_blank"; a.rel = "noopener noreferrer";
+        container.appendChild(a);
+      } else {
+        container.appendChild(document.createTextNode(url));
       }
-      return `<a href="${cleanUrl}" target="_blank" rel="noopener noreferrer">${cleanUrl}</a>${suffix}`;
-    });
+      if (suffix) container.appendChild(document.createTextNode(suffix));
+      last = m.index + m[0].length;
+    }
+    container.appendChild(document.createTextNode(text.slice(last)));
   }
 
   function renderCards() {
@@ -159,9 +165,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const filtered = rawData.filter(x => {
       const matchCat = currentCategory === "Alle" || x.category === currentCategory;
+      
+      // Undefined-Schutz für Text und Subkategorie
+      const safeText = x.text ? x.text.toLowerCase() : "";
+      const safeSubcat = x.subcat ? x.subcat.toLowerCase() : "";
+      
       const matchSearch = searchTerm === "" || 
-                          x.text.toLowerCase().includes(searchTerm) || 
-                          x.subcat.toLowerCase().includes(searchTerm);
+                          safeText.includes(searchTerm) || 
+                          safeSubcat.includes(searchTerm);
       return matchCat && matchSearch;
     });
 
@@ -187,7 +198,7 @@ document.addEventListener("DOMContentLoaded", () => {
       subBadge.className = "badge";
       subBadge.style.marginLeft = "8px";
       subBadge.style.background = "#475569";
-      subBadge.textContent = entry.subcat;
+      subBadge.textContent = entry.subcat || "";
       
       badgeGroup.appendChild(catBadge);
       badgeGroup.appendChild(subBadge);
@@ -198,15 +209,15 @@ document.addEventListener("DOMContentLoaded", () => {
       header.appendChild(badgeGroup);
       header.appendChild(dateSpan);
 
-      // Hier ist innerHTML sicher, da Text vorher escaped wurde
       const textBody = document.createElement("div");
       textBody.className = "card-text";
-      textBody.innerHTML = escapeAndLinkify(entry.text);
+      // Keine innerHTML-Zuweisung mehr, DOM-Parsing nutzt die sichere Methode
+      renderTextInto(textBody, entry.text || "");
       
       const statusDiv = document.createElement("div");
       statusDiv.style.fontSize = "12px";
       statusDiv.style.color = "var(--text-muted)";
-      statusDiv.textContent = `Status: ${entry.status}`;
+      statusDiv.textContent = `Status: ${entry.status || ""}`;
 
       const actions = document.createElement("div");
       actions.className = "card-actions";
@@ -218,7 +229,7 @@ document.addEventListener("DOMContentLoaded", () => {
         itemToMoveId = entry.id;
         itemToMoveCat = entry.category;
         document.getElementById("move-target-cat").value = entry.category;
-        document.getElementById("move-target-subcat").value = entry.subcat;
+        document.getElementById("move-target-subcat").value = entry.subcat || "";
         openModal(moveModal);
       });
 
