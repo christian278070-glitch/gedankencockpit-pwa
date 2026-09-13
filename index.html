@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="manifest.json">
+  <title>Gedankencockpit</title>
+  <style>
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif; }
+    body { background: #0f172a; color: #f8fafc; padding: 20px 16px 100px; min-height: 100vh; }
+    #offline-banner { display: none; background: #dc2626; color: white; text-align: center; padding: 6px; font-size: 12px; font-weight: bold; border-radius: 8px; margin-bottom: 12px; }
+    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; padding-top: 10px; }
+    .header h1 { font-size: 22px; font-weight: 700; }
+    .refresh-btn { background: #1e293b; color: #38bdf8; border: 1px solid #334155; border-radius: 12px; padding: 6px 14px; font-size: 13px; font-weight: 600; cursor: pointer; }
+    .tabs { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 10px; scrollbar-width: none; }
+    .tabs::-webkit-scrollbar { display: none; }
+    .tab { padding: 8px 16px; background: #1e293b; border-radius: 20px; font-size: 13px; font-weight: 500; color: #94a3b8; white-space: nowrap; border: 1px solid #334155; cursor: pointer; }
+    .tab.active { background: #38bdf8; color: #0f172a; border-color: #38bdf8; font-weight: 700; }
+    .subtabs { display: flex; gap: 6px; overflow-x: auto; margin-bottom: 14px; min-height: 28px; scrollbar-width: none; }
+    .subtabs::-webkit-scrollbar { display: none; }
+    .subtab { padding: 4px 12px; background: #1e293b80; border-radius: 14px; font-size: 11px; color: #64748b; border: 1px solid #33415560; cursor: pointer; white-space: nowrap; }
+    .subtab.active { background: #64748b; color: #ffffff; }
+    .cards { display: flex; flex-direction: column; gap: 12px; }
+    .card { background: #1e293b; border: 1px solid #334155; border-radius: 16px; padding: 14px; }
+    .card-meta { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 11px; color: #64748b; }
+    .badge { padding: 2px 8px; border-radius: 6px; font-weight: 600; font-size: 10px; background: #0284c720; color: #38bdf8; border: 1px solid #0284c740; }
+    .badge-sub { background: #334155; color: #cbd5e1; border: none; margin-left: 4px; }
+    .card-text { font-size: 15px; line-height: 1.45; color: #e2e8f0; margin-bottom: 12px; word-break: break-word; }
+    .card-text a { color: #38bdf8; text-decoration: underline; }
+    .card-footer { display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: #64748b; border-top: 1px solid #33415580; padding-top: 10px; }
+    .move-btn { background: #0284c720; color: #38bdf8; border: 1px solid #0284c750; border-radius: 8px; padding: 6px 12px; font-size: 11px; font-weight: 600; cursor: pointer; }
+    .modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); backdrop-filter: blur(4px); justify-content: center; align-items: flex-end; z-index: 1000; }
+    .modal-box { background: #1e293b; width: 100%; max-width: 500px; border-radius: 24px 24px 0 0; padding: 20px; border-top: 1px solid #475569; }
+    .modal-title { font-size: 17px; font-weight: 700; margin-bottom: 14px; text-align: center; }
+    .field-label { font-size: 12px; color: #94a3b8; margin: 10px 0 4px; }
+    .select-input, .text-input { width: 100%; background: #0f172a; border: 1px solid #334155; border-radius: 12px; color: #f8fafc; padding: 12px; font-size: 14px; outline: none; }
+    .modal-actions { display: flex; gap: 10px; margin-top: 18px; }
+    .btn-confirm { flex: 1; background: #38bdf8; color: #0f172a; border: none; padding: 12px; border-radius: 12px; font-weight: 700; cursor: pointer; }
+    .btn-cancel { flex: 1; background: #334155; color: #e2e8f0; border: none; padding: 12px; border-radius: 12px; font-weight: 600; cursor: pointer; }
+    .empty { text-align: center; color: #64748b; padding: 40px 0; font-size: 14px; }
+  </style>
+</head>
+<body>
+
+  <div id="offline-banner">⚠️ OFFLINE - Zeige gespeicherten Snapshot</div>
+
+  <div class="header">
+    <h1>🧠 Gedankencockpit</h1>
+    <button type="button" class="refresh-btn" id="btn-refresh">↻ Laden</button>
+  </div>
+  
+  <div class="tabs" id="tabs"></div>
+  <div class="subtabs" id="subtabs"></div>
+  <div class="cards" id="cards"></div>
+
+  <!-- Modal -->
+  <div class="modal" id="moveModal">
+    <div class="modal-box">
+      <div class="modal-title">Eintrag verschieben</div>
+      <div class="field-label">Ziel-Ordner:</div>
+      <select class="select-input" id="targetCat">
+        <option value="Eingang">Eingang</option>
+        <option value="Arbeit">Arbeit</option>
+        <option value="Privat">Privat</option>
+        <option value="KI">KI</option>
+        <option value="Lesen">Lesen</option>
+      </select>
+      <div class="field-label">Unterordner:</div>
+      <input type="text" class="text-input" id="targetSub" placeholder="z. B. Buch, Meeting, Orga...">
+      <div class="modal-actions">
+        <button type="button" class="btn-cancel" id="btnCancelMove">Abbrechen</button>
+        <button type="button" class="btn-confirm" id="btnSaveMove">Speichern</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
