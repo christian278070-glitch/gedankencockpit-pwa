@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cockpit-cache-v3';
+const CACHE_NAME = 'cockpit-cache-v4';
 const urlsToCache = [
   './',
   './index.html',
@@ -11,10 +11,10 @@ self.addEventListener('install', event => {
   self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then(cache => {
-      // Einzelnes Caching statt all-or-nothing, um Blockaden bei fehlenden Dateien zu vermeiden
+      // Einzelnes Caching: Schlägt eine Datei fehl, bricht nicht die gesamte PWA ab
       return Promise.allSettled(
         urlsToCache.map(file => 
-          cache.add(file).catch(err => console.error(`SW Cache Fehler bei ${file}:`, err))
+          cache.add(file).catch(err => console.warn(`SW Cache Fehler bei ${file}:`, err))
         )
       );
     })
@@ -37,27 +37,28 @@ self.addEventListener('activate', event => {
   );
 });
 
-// 3. DATENABRUF: "Network-First" (Immer die aktuellste Version laden!)
+// 3. DATENABRUF: "Network-First" (Immer die aktuellste Version laden)
 self.addEventListener('fetch', event => {
-  // Google Script API-Aufrufe NIEMALS cachen
-  if (event.request.method === 'POST' || event.request.url.includes('script.google.com')) {
-    return; 
+  // Nur GET-Requests cachen; Google Apps Script Web-App NIEMALS cachen
+  if (event.request.method !== 'GET' || event.request.url.includes('script.google.com')) {
+    return;
   }
 
-  // Für App-Dateien: Erst GitHub fragen, falls offline -> Cache nutzen
+  // Erst Netzwerk versuchen, bei Offline-Zustand auf Cache zurückgreifen
   event.respondWith(
     fetch(event.request)
       .then(response => {
-        // Cache im Hintergrund mit der frischen Version aktualisieren
-        const resClone = response.clone();
-        caches.open(CACHE_NAME).then(cache => cache.put(event.request, resClone));
+        // Nur valide 200er Basis-Antworten in den Cache klonen
+        if (response && response.status === 200 && response.type === 'basic') {
+          const resClone = response.clone();
+          caches.open(CACHE_NAME).then(cache => cache.put(event.request, resClone));
+        }
         return response;
       })
       .catch(() => {
-        // ignoreSearch behebt das Kaltstart-Problem mit URL-Parametern (z.B. app.js?v=2)
-        return caches.match(event.request, { ignoreSearch: true }).then(response => {
-          // Fallback auf index.html, falls die spezifische Datei nicht im Cache ist
-          return response || caches.match('./index.html');
+        // ignoreSearch: true stellt sicher, dass z.B. '?v=...' oder Tokens gecachte Dateien nicht verfehlen
+        return caches.match(event.request, { ignoreSearch: true }).then(cachedResponse => {
+          return cachedResponse || caches.match('./index.html', { ignoreSearch: true });
         });
       })
   );

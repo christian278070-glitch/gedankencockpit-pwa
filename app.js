@@ -120,7 +120,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // --- RENDERING (Sicher vor XSS!) ---
+  // --- RENDERING (100% Sicher vor XSS via DOM-Erzeugung) ---
   function renderTabs() {
     tabsContainer.innerHTML = "";
     categories.forEach(cat => {
@@ -137,26 +137,60 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function renderTextInto(container, text) {
-    const urlRegex = /(https?:\/\/[^\s]+)/g;
-    let last = 0, m;
-    while ((m = urlRegex.exec(text)) !== null) {
-      container.appendChild(document.createTextNode(text.slice(last, m.index)));
-      let url = m[0], suffix = "";
-      if (/[.,;!?)]$/.test(url)) { suffix = url.slice(-1); url = url.slice(0, -1); }
-      let ok = false;
-      try { const u = new URL(url); ok = (u.protocol === "https:" || u.protocol === "http:"); } catch (e) {}
-      if (ok) {
+    container.innerHTML = "";
+    if (!text) return;
+    
+    const str = String(text);
+    const urlRegex = /(https?:\/\/[^\s<]+)/g;
+    let last = 0;
+    let m;
+
+    while ((m = urlRegex.exec(str)) !== null) {
+      // Normaler Text vor der URL
+      if (m.index > last) {
+        container.appendChild(document.createTextNode(str.slice(last, m.index)));
+      }
+
+      let url = m[0];
+      let suffix = "";
+      
+      // Satzzeichen am Link-Ende abtrennen
+      const trailingMatch = url.match(/[.,;!?)]+$/);
+      if (trailingMatch) {
+        suffix = trailingMatch[0];
+        url = url.slice(0, -suffix.length);
+      }
+
+      let isValidUrl = false;
+      try {
+        const u = new URL(url);
+        isValidUrl = (u.protocol === "https:" || u.protocol === "http:");
+      } catch (e) {
+        isValidUrl = false;
+      }
+
+      if (isValidUrl) {
         const a = document.createElement("a");
-        a.href = url; a.textContent = url;
-        a.target = "_blank"; a.rel = "noopener noreferrer";
+        a.href = url;
+        a.textContent = url;
+        a.target = "_blank";
+        a.rel = "noopener noreferrer";
         container.appendChild(a);
       } else {
         container.appendChild(document.createTextNode(url));
       }
-      if (suffix) container.appendChild(document.createTextNode(suffix));
+
+      if (suffix) {
+        container.appendChild(document.createTextNode(suffix));
+      }
+
       last = m.index + m[0].length;
     }
-    container.appendChild(document.createTextNode(text.slice(last)));
+
+    // Restlicher Text nach der letzten URL
+    if (last < str.length) {
+      container.appendChild(document.createTextNode(str.slice(last)));
+    }
   }
 
   function renderCards() {
@@ -166,7 +200,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const filtered = rawData.filter(x => {
       const matchCat = currentCategory === "Alle" || x.category === currentCategory;
       
-      // Undefined-Schutz für Text und Subkategorie
       const safeText = x.text ? x.text.toLowerCase() : "";
       const safeSubcat = x.subcat ? x.subcat.toLowerCase() : "";
       
@@ -182,7 +215,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     filtered.forEach(entry => {
-      // DOM-Elemente einzeln erzeugen verhindert JEDE Form von Injection!
       const card = document.createElement("div");
       card.className = "card";
 
@@ -211,7 +243,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       const textBody = document.createElement("div");
       textBody.className = "card-text";
-      // Keine innerHTML-Zuweisung mehr, DOM-Parsing nutzt die sichere Methode
+      // Aufruf der sicheren DOM-Renderfunktion
       renderTextInto(textBody, entry.text || "");
       
       const statusDiv = document.createElement("div");
@@ -255,10 +287,9 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!navigator.onLine) { showError("Löschen nur im Online-Modus möglich."); return; }
     if (!confirm("Diesen Eintrag endgültig löschen?")) return;
 
-    // Lokales Backup, falls Server fehlschlägt
     const backupData = [...rawData];
     
-    // Karte sofort ausblenden für schnelle UX (Auditor Fix)
+    // Optimistic UI: Sofort ausblenden
     rawData = rawData.filter(x => x.id !== id);
     localStorage.setItem("gc_data", JSON.stringify(rawData));
     renderCards();
