@@ -106,7 +106,10 @@ function renderCards() {
       <div class="card-text">${escapeAndLinkify(x.text)}</div>
       <div class="card-footer">
         <span>${x.status}</span>
-        <button type="button" class="move-btn" onclick="openMoveModal('${x.rawTime}', event)">⇄ Verschieben</button>
+        <div>
+          <button type="button" class="move-btn" onclick="openMoveModal('${x.rawTime}', event)">⇄ Verschieben</button>
+          <button type="button" onclick="deleteEntry('${x.category}', '${(x.origText || '').replace(/'/g, "\\'")}', '${(x.text || '').replace(/'/g, "\\'")}', ${x.rawTime}, this)" style="background-color: #ff4d4d; color: white; border: none; border-radius: 4px; padding: 5px 10px; margin-left: 5px; cursor: pointer;">🗑️ Löschen</button>
+        </div>
       </div>
     </div>`
   ).join("");
@@ -178,3 +181,39 @@ document.getElementById("btnSaveMove").addEventListener('click', async (evt) => 
 
 // Start
 loadDashboardData();
+async function deleteEntry(category, origText, cleanText, rawTime, btnElement) {
+  if (!confirm("Eintrag wirklich löschen?")) return;
+  
+  const originalBtnText = btnElement.innerText;
+  btnElement.innerText = "Lösche...";
+  btnElement.disabled = true;
+
+  const payload = {
+    action: "delete",
+    category: category,
+    origText: origText,
+    cleanText: cleanText,
+    rawTime: rawTime
+  };
+
+  try {
+    const response = await fetch(SCRIPT_URL, {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+    const result = await response.json();
+    
+    if (result.status === "ok") {
+      // Blendet die Karte sofort aus (sucht nach dem übergeordneten div, das die Karte umschließt)
+      btnElement.closest('div[style*="border"], .card, .entry-card').style.display = 'none';
+    } else {
+      alert("Fehler beim Löschen: " + result.message);
+      btnElement.innerText = originalBtnText;
+      btnElement.disabled = false;
+    }
+  } catch (error) {
+    alert("Netzwerkfehler beim Löschen.");
+    btnElement.innerText = originalBtnText;
+    btnElement.disabled = false;
+  }
+}
