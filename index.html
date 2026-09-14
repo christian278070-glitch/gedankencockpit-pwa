@@ -15,18 +15,31 @@
   
   <style>
     /* Safe Areas & Base Colors (Kontrast repariert) */
-    :root { --bg: #0f172a; --card-bg: #1e293b; --text: #f8fafc; --text-muted: #94a3b8; --accent: #3b82f6; --danger: #ef4444; }
+    :root { 
+      --bg: #0f172a; 
+      --card-bg: #1e293b; 
+      --text: #f8fafc; 
+      --text-muted: #94a3b8; 
+      --accent: #3b82f6; 
+      --danger: #ef4444; 
+    }
     
-    /* Layout gefixt: Zieht die App sauber unter die Notch/Dynamic Island */
+    /* Layout: Zieht die App sauber unter die Notch/Dynamic Island */
     body { 
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
-      background: var(--bg); color: var(--text); 
-      padding: calc(env(safe-area-inset-top) + 12px) 16px 100px; 
-      margin: 0; overflow-wrap: anywhere; 
+      background: var(--bg); 
+      color: var(--text); 
+      padding: calc(env(safe-area-inset-top) + 12px) 16px calc(env(safe-area-inset-bottom) + 100px); 
+      margin: 0; 
+      overflow-wrap: anywhere; 
     }
     
     /* Inputs 16px verhindert iOS Auto-Zoom */
-    input, select, button { font-family: inherit; font-size: 16px; box-sizing: border-box; } 
+    input, select, textarea, button { 
+      font-family: inherit; 
+      font-size: 16px; 
+      box-sizing: border-box; 
+    } 
     
     /* Header */
     .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
@@ -34,7 +47,7 @@
     .header-actions { display: flex; gap: 10px; }
     .btn-icon { background: var(--card-bg); color: var(--text); border: none; padding: 10px; border-radius: 12px; min-height: 44px; min-width: 44px; font-size: 18px; cursor: pointer; }
     
-    /* Neues Feature: Suche */
+    /* Suche */
     .search-bar { width: 100%; padding: 12px; border-radius: 12px; border: none; background: var(--card-bg); color: var(--text); margin-bottom: 16px; }
     
     /* Tabs (Scrollbar versteckt, Touch-Area vergrößert) */
@@ -50,20 +63,23 @@
     .card-text { font-size: 16px; line-height: 1.5; margin-bottom: 16px; white-space: pre-wrap; }
     .card-text a { color: var(--accent); text-decoration: underline; }
     
-    /* Karten-Buttons (Sauber getrennt, 44px groß) */
-    .card-actions { display: flex; justify-content: space-between; gap: 12px; margin-top: 12px; border-top: 1px solid #334155; padding-top: 12px; }
-    .btn-move, .btn-delete { flex: 1; border: none; padding: 10px; border-radius: 12px; min-height: 44px; font-weight: 600; cursor: pointer; }
+    /* Karten-Buttons (3-Spaltig: Bearbeiten, Verschieben, Löschen, je min. 44px) */
+    .card-actions { display: flex; justify-content: space-between; gap: 8px; margin-top: 12px; border-top: 1px solid #334155; padding-top: 12px; }
+    .card-actions button { flex: 1; border: none; padding: 10px 4px; border-radius: 12px; min-height: 44px; font-weight: 600; cursor: pointer; text-align: center; }
+    .btn-edit { background: #334155; color: var(--text); }
     .btn-move { background: #334155; color: var(--text); }
     .btn-delete { background: rgba(239, 68, 68, 0.1); color: var(--danger); border: 1px solid rgba(239, 68, 68, 0.2); }
 
-    /* Modals (Hintergrund antippbar, über dem Home-Indicator) */
+    /* Modals (Bottom-Sheets) */
     .modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); z-index: 100; align-items: flex-end; justify-content: center; }
-    .modal-box { background: var(--card-bg); width: 100%; border-radius: 24px 24px 0 0; padding: 24px 24px calc(env(safe-area-inset-bottom) + 24px); transform: translateY(100%); transition: transform 0.3s ease-out; }
+    .modal-box { background: var(--card-bg); width: 100%; border-radius: 24px 24px 0 0; padding: 24px 24px calc(env(safe-area-inset-bottom) + 24px); transform: translateY(100%); transition: transform 0.3s ease-out; box-sizing: border-box; }
     .modal-overlay.open { display: flex; }
     .modal-overlay.open .modal-box { transform: translateY(0); }
     
     .modal-box h3 { margin-top: 0; margin-bottom: 16px; }
-    .modal-box input, .modal-box select { width: 100%; padding: 12px; border-radius: 12px; border: 1px solid #334155; background: #0f172a; color: var(--text); margin-bottom: 16px; }
+    .modal-box label { display: block; font-size: 13px; color: var(--text-muted); margin-bottom: 6px; font-weight: 600; }
+    .modal-box input, .modal-box select, .modal-box textarea { width: 100%; padding: 12px; border-radius: 12px; border: 1px solid #334155; background: #0f172a; color: var(--text); margin-bottom: 16px; }
+    .modal-box textarea { resize: vertical; min-height: 100px; line-height: 1.4; }
     
     .modal-actions { display: flex; gap: 12px; }
     .modal-actions button { flex: 1; border: none; padding: 14px; border-radius: 12px; min-height: 44px; font-weight: 600; cursor: pointer; }
@@ -75,8 +91,37 @@
     .banner.offline { background: #b45309; color: white; }
     .banner.error { background: var(--danger); color: white; }
     
+    /* 5-Sekunden Undo Banner */
+    #undo-banner {
+      display: none;
+      position: fixed;
+      bottom: calc(env(safe-area-inset-bottom) + 24px);
+      left: 50%;
+      transform: translateX(-50%);
+      background: #1e293b;
+      color: #fff;
+      padding: 12px 20px;
+      border-radius: 14px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+      z-index: 9999;
+      font-size: 14px;
+      align-items: center;
+      gap: 16px;
+      border: 1px solid #334155;
+    }
+    #btn-undo {
+      background: var(--accent);
+      border: none;
+      color: #fff;
+      font-weight: bold;
+      padding: 8px 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      min-height: 36px;
+    }
+
     .loading-text { text-align: center; color: var(--text-muted); margin-top: 40px; }
-    body.modal-open { overflow: hidden; } /* Sperrt scrollen im Hintergrund */
+    body.modal-open { overflow: hidden; }
   </style>
 </head>
 <body>
@@ -86,7 +131,6 @@
   <div class="header">
     <h1>Cockpit 2</h1>
     <div class="header-actions">
-
       <button class="btn-icon" id="btn-settings" title="Einstellungen">⚙️</button>
       <button class="btn-icon" id="btn-refresh" title="Laden">↻</button>
     </div>
@@ -119,6 +163,7 @@
   <div class="modal-overlay" id="move-modal">
     <div class="modal-box">
       <h3>Verschieben</h3>
+      <label for="move-target-cat">Zielkategorie:</label>
       <select id="move-target-cat">
         <option value="Eingang">Eingang</option>
         <option value="Arbeit">Arbeit</option>
@@ -126,12 +171,34 @@
         <option value="KI">KI</option>
         <option value="Lesen">Lesen</option>
       </select>
+      <label for="move-target-subcat">Unterkategorie:</label>
       <input type="text" id="move-target-subcat" placeholder="Neue Unterkategorie">
       <div class="modal-actions">
         <button class="btn-cancel" id="btn-cancel-move">Abbrechen</button>
         <button class="btn-confirm" id="btn-confirm-move">Speichern</button>
       </div>
     </div>
+  </div>
+
+  <!-- Edit Modal -->
+  <div class="modal-overlay" id="edit-modal">
+    <div class="modal-box">
+      <h3>Eintrag bearbeiten</h3>
+      <label for="edit-text">Text:</label>
+      <textarea id="edit-text" placeholder="Text anpassen..."></textarea>
+      <label for="edit-subcat">Unterkategorie:</label>
+      <input type="text" id="edit-subcat" placeholder="Unterkategorie">
+      <div class="modal-actions">
+        <button class="btn-cancel" id="btn-cancel-edit">Abbrechen</button>
+        <button class="btn-confirm" id="btn-save-edit">Speichern</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 5-Sekunden Undo Banner -->
+  <div id="undo-banner">
+    <span>Eintrag gelöscht</span>
+    <button id="btn-undo">Rückgängig</button>
   </div>
 
   <!-- defer stellt sicher, dass das DOM geladen ist -->

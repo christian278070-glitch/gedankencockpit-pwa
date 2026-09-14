@@ -4,7 +4,6 @@ document.addEventListener("DOMContentLoaded", () => {
   let currentCategory = "Alle";
   const categories = ["Alle", "Eingang", "Arbeit", "Privat", "KI", "Lesen"];
   
-  // Lade Secrets aus dem lokalen iPhone Speicher (Niemals auf GitHub!)
   let apiUrl = localStorage.getItem("gc_api_url") || "";
   let apiToken = localStorage.getItem("gc_api_token") || "";
 
@@ -15,8 +14,15 @@ document.addEventListener("DOMContentLoaded", () => {
   
   const setupModal = document.getElementById("setup-modal");
   const moveModal = document.getElementById("move-modal");
+  const editModal = document.getElementById("edit-modal");
+  
   let itemToMoveId = null; 
   let itemToMoveCat = null;
+  let itemToEdit = null;
+
+  // Undo / Delete State
+  let pendingDeleteTimer = null;
+  let pendingDeleteItem = null;
 
   // --- START ---
   init();
@@ -26,16 +32,22 @@ document.addEventListener("DOMContentLoaded", () => {
     
     document.getElementById("btn-refresh").addEventListener("click", fetchData);
     document.getElementById("btn-settings").addEventListener("click", openSetupModal);
-    searchInput.addEventListener("input", renderCards); // Live-Suche
+    searchInput.addEventListener("input", renderCards);
     
     document.getElementById("btn-cancel-move").addEventListener("click", closeModals);
     document.getElementById("btn-confirm-move").addEventListener("click", executeMove);
     document.getElementById("btn-save-setup").addEventListener("click", saveSetup);
     
-    // Modal bei Klick auf Hintergrund schließen (Auditor Fix)
+    // Edit Modal Buttons
+    const btnCancelEdit = document.getElementById("btn-cancel-edit");
+    const btnSaveEdit = document.getElementById("btn-save-edit");
+    if (btnCancelEdit) btnCancelEdit.addEventListener("click", closeModals);
+    if (btnSaveEdit) btnSaveEdit.addEventListener("click", executeEdit);
+
+    // Modal-Hintergrund Klick
     document.querySelectorAll(".modal-overlay").forEach(overlay => {
       overlay.addEventListener("click", (e) => {
-        if(e.target === overlay) closeModals();
+        if (e.target === overlay) closeModals();
       });
     });
 
@@ -43,7 +55,6 @@ document.addEventListener("DOMContentLoaded", () => {
     window.addEventListener("offline", updateNetworkStatus);
     updateNetworkStatus();
 
-    // Wenn API URL fehlt, zwinge den Nutzer ins Setup
     if (!apiUrl || !apiToken) {
       openSetupModal();
     } else {
@@ -70,7 +81,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // --- UI UTILS ---
   function updateNetworkStatus() {
-    document.getElementById("offline-banner").style.display = navigator.onLine ? "none" : "block";
+    const offlineBanner = document.getElementById("offline-banner");
+    if (offlineBanner) {
+      offlineBanner.style.display = navigator.onLine ? "none" : "block";
+    }
   }
 
   function showError(msg) {
@@ -80,6 +94,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function openModal(modalEl) {
+    if (!modalEl) return;
     modalEl.classList.add("open");
     document.body.classList.add("modal-open");
   }
@@ -88,6 +103,7 @@ document.addEventListener("DOMContentLoaded", () => {
     document.querySelectorAll(".modal-overlay").forEach(m => m.classList.remove("open"));
     document.body.classList.remove("modal-open");
     itemToMoveId = null;
+    itemToEdit = null;
   }
 
   // --- DATENLADEN ---
@@ -120,7 +136,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // --- RENDERING (100% Sicher vor XSS via DOM-Erzeugung) ---
+  // --- RENDERING (XSS-Safe DOM) ---
   function renderTabs() {
     tabsContainer.innerHTML = "";
     categories.forEach(cat => {
@@ -146,15 +162,12 @@ document.addEventListener("DOMContentLoaded", () => {
     let m;
 
     while ((m = urlRegex.exec(str)) !== null) {
-      // Normaler Text vor der URL
       if (m.index > last) {
         container.appendChild(document.createTextNode(str.slice(last, m.index)));
       }
 
       let url = m[0];
       let suffix = "";
-      
-      // Satzzeichen am Link-Ende abtrennen
       const trailingMatch = url.match(/[.,;!?)]+$/);
       if (trailingMatch) {
         suffix = trailingMatch[0];
@@ -187,7 +200,6 @@ document.addEventListener("DOMContentLoaded", () => {
       last = m.index + m[0].length;
     }
 
-    // Restlicher Text nach der letzten URL
     if (last < str.length) {
       container.appendChild(document.createTextNode(str.slice(last)));
     }
@@ -199,13 +211,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const filtered = rawData.filter(x => {
       const matchCat = currentCategory === "Alle" || x.category === currentCategory;
-      
       const safeText = x.text ? x.text.toLowerCase() : "";
       const safeSubcat = x.subcat ? x.subcat.toLowerCase() : "";
-      
-      const matchSearch = searchTerm === "" || 
-                          safeText.includes(searchTerm) || 
-                          safeSubcat.includes(searchTerm);
+      const matchSearch = searchTerm === "" || safeText.includes(searchTerm) || safeSubcat.includes(searchTerm);
       return matchCat && matchSearch;
     });
 
@@ -243,7 +251,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
       const textBody = document.createElement("div");
       textBody.className = "card-text";
-      // Aufruf der sicheren DOM-Renderfunktion
       renderTextInto(textBody, entry.text || "");
       
       const statusDiv = document.createElement("div");
@@ -254,6 +261,19 @@ document.addEventListener("DOMContentLoaded", () => {
       const actions = document.createElement("div");
       actions.className = "card-actions";
       
+      // 1. Bearbeiten-Button
+      const btnEdit = document.createElement("button");
+      btnEdit.className = "btn-edit";
+      btnEdit.style.background = "#334155";
+      btnEdit.style.color = "#fff";
+      btnEdit.style.border = "none";
+      btnEdit.style.padding = "6px 12px";
+      btnEdit.style.borderRadius = "4px";
+      btnEdit.style.cursor = "pointer";
+      btnEdit.textContent = "Bearbeiten";
+      btnEdit.addEventListener("click", () => openEditModal(entry));
+
+      // 2. Verschieben-Button
       const btnMove = document.createElement("button");
       btnMove.className = "btn-move";
       btnMove.textContent = "Verschieben";
@@ -265,11 +285,13 @@ document.addEventListener("DOMContentLoaded", () => {
         openModal(moveModal);
       });
 
+      // 3. Löschen-Button (ruft 5-Sekunden Undo auf)
       const btnDelete = document.createElement("button");
       btnDelete.className = "btn-delete";
       btnDelete.textContent = "Löschen";
-      btnDelete.addEventListener("click", () => executeDelete(entry.id, entry.category));
+      btnDelete.addEventListener("click", () => scheduleDelete(entry));
 
+      actions.appendChild(btnEdit);
       actions.appendChild(btnMove);
       actions.appendChild(btnDelete);
 
@@ -282,35 +304,136 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // --- SERVER AKTIONEN (mit echter UUID!) ---
-  async function executeDelete(id, category) {
-    if (!navigator.onLine) { showError("Löschen nur im Online-Modus möglich."); return; }
-    if (!confirm("Diesen Eintrag endgültig löschen?")) return;
+  // --- BEARBEITEN LOGIK ---
+  function openEditModal(entry) {
+    itemToEdit = entry;
+    const textInput = document.getElementById("edit-text");
+    const subcatInput = document.getElementById("edit-subcat");
+    if (textInput) textInput.value = entry.text || "";
+    if (subcatInput) subcatInput.value = entry.subcat || "";
+    openModal(editModal);
+  }
 
-    const backupData = [...rawData];
-    
-    // Optimistic UI: Sofort ausblenden
-    rawData = rawData.filter(x => x.id !== id);
+  async function executeEdit() {
+    if (!navigator.onLine) { showError("Bearbeiten nur online möglich."); return; }
+    if (!itemToEdit) return;
+
+    const newText = document.getElementById("edit-text").value.trim();
+    const newSubcat = document.getElementById("edit-subcat").value.trim();
+    const entryId = itemToEdit.id;
+    const category = itemToEdit.category;
+    const oldEntry = { ...itemToEdit };
+
+    // Optimistic Update lokal
+    itemToEdit.text = newText;
+    itemToEdit.subcat = newSubcat;
+    itemToEdit.status = "Erfasst, bearbeitet";
     localStorage.setItem("gc_data", JSON.stringify(rawData));
     renderCards();
+    closeModals();
 
     try {
       const res = await fetch(apiUrl, {
         method: "POST",
         headers: { "Content-Type": "text/plain" },
-        body: JSON.stringify({ action: "delete", id: id, category: category, token: apiToken })
+        body: JSON.stringify({
+          action: "edit",
+          id: entryId,
+          category: category,
+          newText: newText,
+          newSubcat: newSubcat,
+          token: apiToken
+        })
       });
       const result = await res.json();
       if (result.status !== "ok") throw new Error(result.message);
-    } catch(err) {
-      console.error(err);
-      showError("Fehler beim Löschen. Stelle Karte wieder her.");
-      rawData = backupData; // Rollback
+    } catch (err) {
+      console.error("Edit Error:", err);
+      showError("Bearbeiten fehlgeschlagen. Stelle Original wieder her.");
+      // Rollback
+      const idx = rawData.findIndex(x => x.id === entryId);
+      if (idx !== -1) rawData[idx] = oldEntry;
       localStorage.setItem("gc_data", JSON.stringify(rawData));
       renderCards();
     }
   }
 
+  // --- LÖSCHEN & 5-SEKUNDEN UNDO ---
+  function scheduleDelete(entry) {
+    // Falls noch ein Löschvorgang tickt, diesen sofort an den Server committen
+    if (pendingDeleteTimer) {
+      clearTimeout(pendingDeleteTimer);
+      commitDelete(pendingDeleteItem);
+    }
+
+    const backupItem = entry;
+    pendingDeleteItem = entry;
+
+    // Lokal sofort ausblenden
+    rawData = rawData.filter(x => x.id !== entry.id);
+    localStorage.setItem("gc_data", JSON.stringify(rawData));
+    renderCards();
+
+    // Banner anzeigen
+    const banner = document.getElementById("undo-banner");
+    const undoBtn = document.getElementById("btn-undo");
+    if (banner) banner.style.display = "flex";
+
+    // Klick auf "Rückgängig"
+    if (undoBtn) {
+      undoBtn.onclick = () => {
+        clearTimeout(pendingDeleteTimer);
+        pendingDeleteTimer = null;
+        pendingDeleteItem = null;
+        if (banner) banner.style.display = "none";
+        
+        // Karte wieder einfügen
+        rawData.unshift(backupItem);
+        localStorage.setItem("gc_data", JSON.stringify(rawData));
+        renderCards();
+      };
+    }
+
+    // Timer: Nach 5 Sekunden Server-Delete ausführen
+    pendingDeleteTimer = setTimeout(() => {
+      if (banner) banner.style.display = "none";
+      commitDelete(backupItem);
+      pendingDeleteTimer = null;
+      pendingDeleteItem = null;
+    }, 5000);
+  }
+
+  async function commitDelete(item) {
+    if (!navigator.onLine) {
+      showError("Löschen fehlgeschlagen: Kein Netz.");
+      return;
+    }
+
+    try {
+      const res = await fetch(apiUrl, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain" },
+        body: JSON.stringify({ 
+          action: "delete", 
+          id: item.id, 
+          category: item.category, 
+          text: item.text, // Text als Fallback für Altdaten ohne UUID
+          token: apiToken 
+        })
+      });
+      const result = await res.json();
+      if (result.status !== "ok") throw new Error(result.message);
+    } catch(err) {
+      console.error("Delete Error:", err);
+      showError("Fehler beim Löschen auf dem Server.");
+      // Rollback bei Serverfehler
+      rawData.unshift(item);
+      localStorage.setItem("gc_data", JSON.stringify(rawData));
+      renderCards();
+    }
+  }
+
+  // --- VERSCHIEBEN LOGIK ---
   async function executeMove() {
     if (!navigator.onLine) { showError("Nur im Online-Modus möglich."); return; }
     if (!itemToMoveId) return;
@@ -332,7 +455,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const result = await res.json();
       if (result.status !== "ok") throw new Error(result.message);
       
-      fetchData(); // Lädt frische Daten vom Server
+      fetchData();
     } catch(err) {
       console.error(err);
       showError("Verschieben fehlgeschlagen.");
