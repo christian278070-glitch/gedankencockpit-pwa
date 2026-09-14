@@ -65,7 +65,19 @@
     
     /* Karten-Buttons (3-Spaltig: Bearbeiten, Verschieben, Löschen, je min. 44px) */
     .card-actions { display: flex; justify-content: space-between; gap: 8px; margin-top: 12px; border-top: 1px solid #334155; padding-top: 12px; }
-    .card-actions button { flex: 1; border: none; padding: 10px 4px; border-radius: 12px; min-height: 44px; font-weight: 600; cursor: pointer; text-align: center; }
+    .card-actions button { 
+      flex: 1; 
+      border: none; 
+      padding: 10px 2px; /* Weniger Rand links/rechts */
+      border-radius: 10px; 
+      min-height: 44px; 
+      font-size: 11px; /* Etwas kleiner */
+      letter-spacing: -0.3px; /* Buchstaben minimal enger */
+      white-space: nowrap !important; /* Absoluter Zwang für eine Zeile */
+      font-weight: bold; 
+      cursor: pointer; 
+      text-align: center; 
+    }
     .btn-edit { background: #334155; color: var(--text); }
     .btn-move { background: #334155; color: var(--text); }
     .btn-delete { background: rgba(239, 68, 68, 0.1); color: var(--danger); border: 1px solid rgba(239, 68, 68, 0.2); }
