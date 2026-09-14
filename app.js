@@ -111,7 +111,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // --- NEUE FEHLERDIFFERENZIERUNG HIER ---
   async function fetchData() {
     if (!apiUrl || !apiToken || !navigator.onLine) return;
     cardsContainer.innerHTML = '<div class="loading-text">Synchronisiere...</div>';
@@ -276,7 +275,9 @@ document.addEventListener("DOMContentLoaded", () => {
       subBadge.textContent = entry.subcat || "";
       
       badgeGroup.appendChild(catBadge);
-      badgeGroup.appendChild(subBadge);
+      
+      // AUDIT FIX: DOM-API Fallback für leere Subcat (verhindert leere Pillen und XSS)
+      if (entry.subcat) badgeGroup.appendChild(subBadge);
 
       const dateSpan = document.createElement("span");
       dateSpan.textContent = entry.date;
@@ -296,7 +297,8 @@ document.addEventListener("DOMContentLoaded", () => {
       const actions = document.createElement("div");
       actions.className = "card-actions";
       
-      const isDone = entry.status === "Erledigt";
+      // AUDIT FIX: Sichere Abfrage auf den Haken (mit undef-Fallback)
+      const isDone = String(entry.status || "").indexOf("✓ ") === 0;
       if (isDone) {
         card.classList.add("is-done");
       }
@@ -509,8 +511,10 @@ document.addEventListener("DOMContentLoaded", () => {
   async function executeToggleDone(entry) {
     if (!navigator.onLine) { showError("Nur im Online-Modus möglich."); return; }
     
-    const oldStatus = entry.status;
-    const newStatus = (oldStatus === "Erledigt") ? "Erfasst, bearbeitet" : "Erledigt";
+    // AUDIT FIX: Sicheres Toggle mit Check auf das Präfix "✓ " 
+    const oldStatus = String(entry.status || "");
+    const isDone = oldStatus.indexOf("✓ ") === 0;
+    const newStatus = isDone ? oldStatus.substring(2) : "✓ " + oldStatus;
 
     entry.status = newStatus;
     localStorage.setItem("gc_data", JSON.stringify(rawData));
