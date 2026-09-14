@@ -2,6 +2,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // --- GLOBALE STATE VARIABLEN ---
   let rawData = [];
   let currentCategory = "Alle";
+  let currentSubcategory = "Alle"; // NEU: State für Unterkategorien-Filter
   const categories = ["Alle", "Eingang", "Arbeit", "Privat", "KI", "Lesen"];
   
   let apiUrl = localStorage.getItem("gc_api_url") || "";
@@ -9,6 +10,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const cardsContainer = document.getElementById("cards-container");
   const tabsContainer = document.getElementById("tabs-container");
+  const subTabsContainer = document.getElementById("sub-tabs-container"); // NEU: Container für Sub-Tabs
   const searchInput = document.getElementById("search-input");
   const errorBanner = document.getElementById("error-banner");
   
@@ -18,6 +20,7 @@ document.addEventListener("DOMContentLoaded", () => {
   
   let itemToMoveId = null; 
   let itemToMoveCat = null;
+  let itemToMoveText = null; // BUGFIX: Text-Fallback fürs Verschieben
   let itemToEdit = null;
 
   // Undo / Delete State
@@ -103,6 +106,8 @@ document.addEventListener("DOMContentLoaded", () => {
     document.querySelectorAll(".modal-overlay").forEach(m => m.classList.remove("open"));
     document.body.classList.remove("modal-open");
     itemToMoveId = null;
+    itemToMoveCat = null;
+    itemToMoveText = null;
     itemToEdit = null;
   }
 
@@ -110,7 +115,7 @@ document.addEventListener("DOMContentLoaded", () => {
   function loadLocalData() {
     const cached = localStorage.getItem("gc_data");
     if (cached) {
-      try { rawData = JSON.parse(cached); renderCards(); } catch(e) {}
+      try { rawData = JSON.parse(cached); renderSubTabs(); renderCards(); } catch(e) {}
     }
   }
 
@@ -128,6 +133,7 @@ document.addEventListener("DOMContentLoaded", () => {
       
       rawData = data;
       localStorage.setItem("gc_data", JSON.stringify(rawData));
+      renderSubTabs();
       renderCards();
     } catch(err) {
       console.error("Fetch Error:", err);
@@ -145,10 +151,46 @@ document.addEventListener("DOMContentLoaded", () => {
       btn.textContent = cat;
       btn.addEventListener("click", () => {
         currentCategory = cat;
+        currentSubcategory = "Alle"; // Beim Wechsel der Hauptkategorie Filter zurücksetzen
         renderTabs();
+        renderSubTabs();
         renderCards();
       });
       tabsContainer.appendChild(btn);
+    });
+  }
+
+  // NEU: Unterkategorien filtern und als Pillen rendern
+  function renderSubTabs() {
+    if (!subTabsContainer) return;
+    subTabsContainer.innerHTML = "";
+
+    // Bei "Alle" keine Sub-Tabs anzeigen
+    if (currentCategory === "Alle") return;
+
+    // Sammle alle existierenden Unterkategorien in der aktuellen Hauptkategorie
+    const subcats = new Set();
+    rawData.forEach(item => {
+      if (item.category === currentCategory && item.subcat) {
+        subcats.add(item.subcat);
+      }
+    });
+
+    if (subcats.size === 0) return;
+
+    // "Alle" als Standard-Option hinzufügen
+    const sortedSubcats = ["Alle", ...Array.from(subcats).sort()];
+
+    sortedSubcats.forEach(sub => {
+      const btn = document.createElement("button");
+      btn.className = `sub-tab ${sub === currentSubcategory ? "active" : ""}`;
+      btn.textContent = sub;
+      btn.addEventListener("click", () => {
+        currentSubcategory = sub;
+        renderSubTabs();
+        renderCards();
+      });
+      subTabsContainer.appendChild(btn);
     });
   }
 
@@ -211,10 +253,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const filtered = rawData.filter(x => {
       const matchCat = currentCategory === "Alle" || x.category === currentCategory;
+      // NEU: Prüfung auf Subcategory
+      const matchSub = currentCategory === "Alle" || currentSubcategory === "Alle" || x.subcat === currentSubcategory;
+      
       const safeText = x.text ? x.text.toLowerCase() : "";
       const safeSubcat = x.subcat ? x.subcat.toLowerCase() : "";
       const matchSearch = searchTerm === "" || safeText.includes(searchTerm) || safeSubcat.includes(searchTerm);
-      return matchCat && matchSearch;
+      
+      return matchCat && matchSub && matchSearch;
     });
 
     if (filtered.length === 0) {
@@ -264,12 +310,6 @@ document.addEventListener("DOMContentLoaded", () => {
       // 1. Bearbeiten-Button
       const btnEdit = document.createElement("button");
       btnEdit.className = "btn-edit";
-      btnEdit.style.background = "#334155";
-      btnEdit.style.color = "#fff";
-      btnEdit.style.border = "none";
-      btnEdit.style.padding = "6px 12px";
-      btnEdit.style.borderRadius = "4px";
-      btnEdit.style.cursor = "pointer";
       btnEdit.textContent = "Bearbeiten";
       btnEdit.addEventListener("click", () => openEditModal(entry));
 
@@ -280,12 +320,13 @@ document.addEventListener("DOMContentLoaded", () => {
       btnMove.addEventListener("click", () => {
         itemToMoveId = entry.id;
         itemToMoveCat = entry.category;
+        itemToMoveText = entry.text; // BUGFIX: Text wird jetzt mitgegeben!
         document.getElementById("move-target-cat").value = entry.category;
         document.getElementById("move-target-subcat").value = entry.subcat || "";
         openModal(moveModal);
       });
 
-      // 3. Löschen-Button (ruft 5-Sekunden Undo auf)
+      // 3. Löschen-Button
       const btnDelete = document.createElement("button");
       btnDelete.className = "btn-delete";
       btnDelete.textContent = "Löschen";
@@ -322,6 +363,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const newSubcat = document.getElementById("edit-subcat").value.trim();
     const entryId = itemToEdit.id;
     const category = itemToEdit.category;
+    const oldTextFallback = itemToEdit.text; 
     const oldEntry = { ...itemToEdit };
 
     // Optimistic Update lokal
@@ -329,6 +371,7 @@ document.addEventListener("DOMContentLoaded", () => {
     itemToEdit.subcat = newSubcat;
     itemToEdit.status = "Erfasst, bearbeitet";
     localStorage.setItem("gc_data", JSON.stringify(rawData));
+    renderSubTabs(); // Damit neue Subcats direkt oben auftauchen
     renderCards();
     closeModals();
 
@@ -342,6 +385,7 @@ document.addEventListener("DOMContentLoaded", () => {
           category: category,
           newText: newText,
           newSubcat: newSubcat,
+          text: oldTextFallback, 
           token: apiToken
         })
       });
@@ -350,17 +394,16 @@ document.addEventListener("DOMContentLoaded", () => {
     } catch (err) {
       console.error("Edit Error:", err);
       showError("Bearbeiten fehlgeschlagen. Stelle Original wieder her.");
-      // Rollback
       const idx = rawData.findIndex(x => x.id === entryId);
       if (idx !== -1) rawData[idx] = oldEntry;
       localStorage.setItem("gc_data", JSON.stringify(rawData));
+      renderSubTabs();
       renderCards();
     }
   }
 
   // --- LÖSCHEN & 5-SEKUNDEN UNDO ---
   function scheduleDelete(entry) {
-    // Falls noch ein Löschvorgang tickt, diesen sofort an den Server committen
     if (pendingDeleteTimer) {
       clearTimeout(pendingDeleteTimer);
       commitDelete(pendingDeleteItem);
@@ -369,17 +412,15 @@ document.addEventListener("DOMContentLoaded", () => {
     const backupItem = entry;
     pendingDeleteItem = entry;
 
-    // Lokal sofort ausblenden
     rawData = rawData.filter(x => x.id !== entry.id);
     localStorage.setItem("gc_data", JSON.stringify(rawData));
+    renderSubTabs();
     renderCards();
 
-    // Banner anzeigen
     const banner = document.getElementById("undo-banner");
     const undoBtn = document.getElementById("btn-undo");
     if (banner) banner.style.display = "flex";
 
-    // Klick auf "Rückgängig"
     if (undoBtn) {
       undoBtn.onclick = () => {
         clearTimeout(pendingDeleteTimer);
@@ -387,14 +428,13 @@ document.addEventListener("DOMContentLoaded", () => {
         pendingDeleteItem = null;
         if (banner) banner.style.display = "none";
         
-        // Karte wieder einfügen
         rawData.unshift(backupItem);
         localStorage.setItem("gc_data", JSON.stringify(rawData));
+        renderSubTabs();
         renderCards();
       };
     }
 
-    // Timer: Nach 5 Sekunden Server-Delete ausführen
     pendingDeleteTimer = setTimeout(() => {
       if (banner) banner.style.display = "none";
       commitDelete(backupItem);
@@ -417,7 +457,7 @@ document.addEventListener("DOMContentLoaded", () => {
           action: "delete", 
           id: item.id, 
           category: item.category, 
-          text: item.text, // Text als Fallback für Altdaten ohne UUID
+          text: item.text, 
           token: apiToken 
         })
       });
@@ -426,9 +466,9 @@ document.addEventListener("DOMContentLoaded", () => {
     } catch(err) {
       console.error("Delete Error:", err);
       showError("Fehler beim Löschen auf dem Server.");
-      // Rollback bei Serverfehler
       rawData.unshift(item);
       localStorage.setItem("gc_data", JSON.stringify(rawData));
+      renderSubTabs();
       renderCards();
     }
   }
@@ -436,12 +476,13 @@ document.addEventListener("DOMContentLoaded", () => {
   // --- VERSCHIEBEN LOGIK ---
   async function executeMove() {
     if (!navigator.onLine) { showError("Nur im Online-Modus möglich."); return; }
-    if (!itemToMoveId) return;
+    if (!itemToMoveId && !itemToMoveText) return; 
 
     const targetCat = document.getElementById("move-target-cat").value;
     const targetSub = document.getElementById("move-target-subcat").value.trim();
     const entryId = itemToMoveId;
     const fromCat = itemToMoveCat;
+    const oldTextFallback = itemToMoveText; // BUGFIX: Text abgreifen
     
     closeModals();
     cardsContainer.innerHTML = '<div class="loading-text">Verschiebe...</div>';
@@ -450,12 +491,21 @@ document.addEventListener("DOMContentLoaded", () => {
       const res = await fetch(apiUrl, {
         method: "POST",
         headers: { "Content-Type": "text/plain" },
-        body: JSON.stringify({ action: "move", id: entryId, fromCat: fromCat, toCat: targetCat, newSubcat: targetSub, token: apiToken })
+        // BUGFIX: "text: oldTextFallback" wird jetzt mitgeschickt!
+        body: JSON.stringify({ 
+          action: "move", 
+          id: entryId, 
+          fromCat: fromCat, 
+          toCat: targetCat, 
+          newSubcat: targetSub, 
+          text: oldTextFallback, 
+          token: apiToken 
+        })
       });
       const result = await res.json();
       if (result.status !== "ok") throw new Error(result.message);
       
-      fetchData();
+      fetchData(); // Lädt die Daten frisch herunter
     } catch(err) {
       console.error(err);
       showError("Verschieben fehlgeschlagen.");
