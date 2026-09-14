@@ -1,8 +1,7 @@
 document.addEventListener("DOMContentLoaded", () => {
-  // --- GLOBALE STATE VARIABLEN ---
   let rawData = [];
   let currentCategory = "Alle";
-  let currentSubcategory = "Alle"; // NEU: State für Unterkategorien-Filter
+  let currentSubcategory = "Alle"; 
   const categories = ["Alle", "Eingang", "Arbeit", "Privat", "KI", "Lesen"];
   
   let apiUrl = localStorage.getItem("gc_api_url") || "";
@@ -10,7 +9,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const cardsContainer = document.getElementById("cards-container");
   const tabsContainer = document.getElementById("tabs-container");
-  const subTabsContainer = document.getElementById("sub-tabs-container"); // NEU: Container für Sub-Tabs
+  const subTabsContainer = document.getElementById("sub-tabs-container"); 
   const searchInput = document.getElementById("search-input");
   const errorBanner = document.getElementById("error-banner");
   
@@ -20,14 +19,12 @@ document.addEventListener("DOMContentLoaded", () => {
   
   let itemToMoveId = null; 
   let itemToMoveCat = null;
-  let itemToMoveText = null; // BUGFIX: Text-Fallback fürs Verschieben
+  let itemToMoveText = null; 
   let itemToEdit = null;
 
-  // Undo / Delete State
   let pendingDeleteTimer = null;
   let pendingDeleteItem = null;
 
-  // --- START ---
   init();
 
   function init() {
@@ -41,13 +38,11 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("btn-confirm-move").addEventListener("click", executeMove);
     document.getElementById("btn-save-setup").addEventListener("click", saveSetup);
     
-    // Edit Modal Buttons
     const btnCancelEdit = document.getElementById("btn-cancel-edit");
     const btnSaveEdit = document.getElementById("btn-save-edit");
     if (btnCancelEdit) btnCancelEdit.addEventListener("click", closeModals);
     if (btnSaveEdit) btnSaveEdit.addEventListener("click", executeEdit);
 
-    // Modal-Hintergrund Klick
     document.querySelectorAll(".modal-overlay").forEach(overlay => {
       overlay.addEventListener("click", (e) => {
         if (e.target === overlay) closeModals();
@@ -66,7 +61,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // --- AUTH / SETUP ---
   function openSetupModal() {
     document.getElementById("input-api-url").value = apiUrl;
     document.getElementById("input-api-token").value = apiToken;
@@ -82,7 +76,6 @@ document.addEventListener("DOMContentLoaded", () => {
     fetchData();
   }
 
-  // --- UI UTILS ---
   function updateNetworkStatus() {
     const offlineBanner = document.getElementById("offline-banner");
     if (offlineBanner) {
@@ -111,7 +104,6 @@ document.addEventListener("DOMContentLoaded", () => {
     itemToEdit = null;
   }
 
-  // --- DATENLADEN ---
   function loadLocalData() {
     const cached = localStorage.getItem("gc_data");
     if (cached) {
@@ -121,7 +113,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
   async function fetchData() {
     if (!apiUrl || !apiToken || !navigator.onLine) return;
-    
     cardsContainer.innerHTML = '<div class="loading-text">Synchronisiere...</div>';
     
     try {
@@ -142,7 +133,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // --- RENDERING (XSS-Safe DOM) ---
   function renderTabs() {
     tabsContainer.innerHTML = "";
     categories.forEach(cat => {
@@ -151,7 +141,7 @@ document.addEventListener("DOMContentLoaded", () => {
       btn.textContent = cat;
       btn.addEventListener("click", () => {
         currentCategory = cat;
-        currentSubcategory = "Alle"; // Beim Wechsel der Hauptkategorie Filter zurücksetzen
+        currentSubcategory = "Alle"; 
         renderTabs();
         renderSubTabs();
         renderCards();
@@ -160,15 +150,11 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // NEU: Unterkategorien filtern und als Pillen rendern
   function renderSubTabs() {
     if (!subTabsContainer) return;
     subTabsContainer.innerHTML = "";
-
-    // Bei "Alle" keine Sub-Tabs anzeigen
     if (currentCategory === "Alle") return;
 
-    // Sammle alle existierenden Unterkategorien in der aktuellen Hauptkategorie
     const subcats = new Set();
     rawData.forEach(item => {
       if (item.category === currentCategory && item.subcat) {
@@ -177,8 +163,6 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     if (subcats.size === 0) return;
-
-    // "Alle" als Standard-Option hinzufügen
     const sortedSubcats = ["Alle", ...Array.from(subcats).sort()];
 
     sortedSubcats.forEach(sub => {
@@ -234,17 +218,10 @@ document.addEventListener("DOMContentLoaded", () => {
       } else {
         container.appendChild(document.createTextNode(url));
       }
-
-      if (suffix) {
-        container.appendChild(document.createTextNode(suffix));
-      }
-
+      if (suffix) container.appendChild(document.createTextNode(suffix));
       last = m.index + m[0].length;
     }
-
-    if (last < str.length) {
-      container.appendChild(document.createTextNode(str.slice(last)));
-    }
+    if (last < str.length) container.appendChild(document.createTextNode(str.slice(last)));
   }
 
   function renderCards() {
@@ -253,9 +230,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const filtered = rawData.filter(x => {
       const matchCat = currentCategory === "Alle" || x.category === currentCategory;
-      // NEU: Prüfung auf Subcategory
       const matchSub = currentCategory === "Alle" || currentSubcategory === "Alle" || x.subcat === currentSubcategory;
-      
       const safeText = x.text ? x.text.toLowerCase() : "";
       const safeSubcat = x.subcat ? x.subcat.toLowerCase() : "";
       const matchSearch = searchTerm === "" || safeText.includes(searchTerm) || safeSubcat.includes(searchTerm);
@@ -307,31 +282,44 @@ document.addEventListener("DOMContentLoaded", () => {
       const actions = document.createElement("div");
       actions.className = "card-actions";
       
-      // 1. Bearbeiten-Button
+      // CHECK DONE STATUS
+      const isDone = entry.status === "Erledigt";
+      if (isDone) {
+        card.classList.add("is-done");
+      }
+
+      // BUTTON 0: DONE
+      const btnDone = document.createElement("button");
+      btnDone.className = "btn-done" + (isDone ? " done-active" : "");
+      btnDone.textContent = isDone ? "↺" : "✓";
+      btnDone.addEventListener("click", () => executeToggleDone(entry));
+
+      // BUTTON 1: EDIT
       const btnEdit = document.createElement("button");
       btnEdit.className = "btn-edit";
       btnEdit.textContent = "Bearbeiten";
       btnEdit.addEventListener("click", () => openEditModal(entry));
 
-      // 2. Verschieben-Button
+      // BUTTON 2: MOVE
       const btnMove = document.createElement("button");
       btnMove.className = "btn-move";
       btnMove.textContent = "Verschieben";
       btnMove.addEventListener("click", () => {
         itemToMoveId = entry.id;
         itemToMoveCat = entry.category;
-        itemToMoveText = entry.text; // BUGFIX: Text wird jetzt mitgegeben!
+        itemToMoveText = entry.text; 
         document.getElementById("move-target-cat").value = entry.category;
         document.getElementById("move-target-subcat").value = entry.subcat || "";
         openModal(moveModal);
       });
 
-      // 3. Löschen-Button
+      // BUTTON 3: DELETE
       const btnDelete = document.createElement("button");
       btnDelete.className = "btn-delete";
       btnDelete.textContent = "Löschen";
       btnDelete.addEventListener("click", () => scheduleDelete(entry));
 
+      actions.appendChild(btnDone);
       actions.appendChild(btnEdit);
       actions.appendChild(btnMove);
       actions.appendChild(btnDelete);
@@ -345,7 +333,6 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // --- BEARBEITEN LOGIK ---
   function openEditModal(entry) {
     itemToEdit = entry;
     const textInput = document.getElementById("edit-text");
@@ -366,12 +353,11 @@ document.addEventListener("DOMContentLoaded", () => {
     const oldTextFallback = itemToEdit.text; 
     const oldEntry = { ...itemToEdit };
 
-    // Optimistic Update lokal
     itemToEdit.text = newText;
     itemToEdit.subcat = newSubcat;
     itemToEdit.status = "Erfasst, bearbeitet";
     localStorage.setItem("gc_data", JSON.stringify(rawData));
-    renderSubTabs(); // Damit neue Subcats direkt oben auftauchen
+    renderSubTabs(); 
     renderCards();
     closeModals();
 
@@ -402,7 +388,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // --- LÖSCHEN & 5-SEKUNDEN UNDO ---
   function scheduleDelete(entry) {
     if (pendingDeleteTimer) {
       clearTimeout(pendingDeleteTimer);
@@ -473,7 +458,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // --- VERSCHIEBEN LOGIK ---
   async function executeMove() {
     if (!navigator.onLine) { showError("Nur im Online-Modus möglich."); return; }
     if (!itemToMoveId && !itemToMoveText) return; 
@@ -482,7 +466,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const targetSub = document.getElementById("move-target-subcat").value.trim();
     const entryId = itemToMoveId;
     const fromCat = itemToMoveCat;
-    const oldTextFallback = itemToMoveText; // BUGFIX: Text abgreifen
+    const oldTextFallback = itemToMoveText; 
     
     closeModals();
     cardsContainer.innerHTML = '<div class="loading-text">Verschiebe...</div>';
@@ -491,7 +475,6 @@ document.addEventListener("DOMContentLoaded", () => {
       const res = await fetch(apiUrl, {
         method: "POST",
         headers: { "Content-Type": "text/plain" },
-        // BUGFIX: "text: oldTextFallback" wird jetzt mitgeschickt!
         body: JSON.stringify({ 
           action: "move", 
           id: entryId, 
@@ -505,10 +488,44 @@ document.addEventListener("DOMContentLoaded", () => {
       const result = await res.json();
       if (result.status !== "ok") throw new Error(result.message);
       
-      fetchData(); // Lädt die Daten frisch herunter
+      fetchData(); 
     } catch(err) {
       console.error(err);
       showError("Verschieben fehlgeschlagen.");
+      renderCards();
+    }
+  }
+
+  // --- ERLEDIGT LOGIK ---
+  async function executeToggleDone(entry) {
+    if (!navigator.onLine) { showError("Nur im Online-Modus möglich."); return; }
+    
+    const oldStatus = entry.status;
+    const newStatus = (oldStatus === "Erledigt") ? "Erfasst, bearbeitet" : "Erledigt";
+
+    entry.status = newStatus;
+    localStorage.setItem("gc_data", JSON.stringify(rawData));
+    renderCards();
+
+    try {
+      const res = await fetch(apiUrl, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain" },
+        body: JSON.stringify({ 
+          action: "toggle_done", 
+          id: entry.id, 
+          category: entry.category, 
+          text: entry.text, 
+          token: apiToken 
+        })
+      });
+      const result = await res.json();
+      if (result.status !== "ok") throw new Error(result.message);
+    } catch(err) {
+      console.error(err);
+      showError("Status-Update fehlgeschlagen.");
+      entry.status = oldStatus;
+      localStorage.setItem("gc_data", JSON.stringify(rawData));
       renderCards();
     }
   }
