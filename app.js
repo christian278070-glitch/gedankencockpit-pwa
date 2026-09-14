@@ -111,14 +111,28 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
+  // --- NEUE FEHLERDIFFERENZIERUNG HIER ---
   async function fetchData() {
     if (!apiUrl || !apiToken || !navigator.onLine) return;
     cardsContainer.innerHTML = '<div class="loading-text">Synchronisiere...</div>';
     
     try {
       const res = await fetch(`${apiUrl}?token=${encodeURIComponent(apiToken)}`);
-      if (!res.ok) throw new Error("HTTP Fehler " + res.status);
-      const data = await res.json();
+      
+      if (!res.ok) {
+        if (res.status === 401 || res.status === 403) throw new Error("Auth-Fehler: API-Token falsch.");
+        if (res.status === 404) throw new Error("URL-Fehler: Backend nicht gefunden (404).");
+        if (res.status === 500) throw new Error("Server-Fehler: Apps Script ist abgestürzt (500).");
+        throw new Error(`HTTP Fehler ${res.status}`);
+      }
+      
+      let data;
+      try {
+        data = await res.json();
+      } catch (parseErr) {
+        console.error("JSON Parse Error:", parseErr);
+        throw new Error("Datenfehler: Google hat kein JSON zurückgegeben.");
+      }
       
       if (data.status === "error") throw new Error(data.message || "Auth fehlgeschlagen");
       
@@ -128,7 +142,7 @@ document.addEventListener("DOMContentLoaded", () => {
       renderCards();
     } catch(err) {
       console.error("Fetch Error:", err);
-      showError("Netzwerkfehler beim Laden.");
+      showError(err.message || "Unbekannter Fehler beim Laden.");
       loadLocalData(); 
     }
   }
@@ -282,25 +296,21 @@ document.addEventListener("DOMContentLoaded", () => {
       const actions = document.createElement("div");
       actions.className = "card-actions";
       
-      // CHECK DONE STATUS
       const isDone = entry.status === "Erledigt";
       if (isDone) {
         card.classList.add("is-done");
       }
 
-      // BUTTON 0: DONE
       const btnDone = document.createElement("button");
       btnDone.className = "btn-done" + (isDone ? " done-active" : "");
       btnDone.textContent = isDone ? "↺" : "✓";
       btnDone.addEventListener("click", () => executeToggleDone(entry));
 
-      // BUTTON 1: EDIT
       const btnEdit = document.createElement("button");
       btnEdit.className = "btn-edit";
       btnEdit.textContent = "Bearbeiten";
       btnEdit.addEventListener("click", () => openEditModal(entry));
 
-      // BUTTON 2: MOVE
       const btnMove = document.createElement("button");
       btnMove.className = "btn-move";
       btnMove.textContent = "Verschieben";
@@ -313,7 +323,6 @@ document.addEventListener("DOMContentLoaded", () => {
         openModal(moveModal);
       });
 
-      // BUTTON 3: DELETE
       const btnDelete = document.createElement("button");
       btnDelete.className = "btn-delete";
       btnDelete.textContent = "Löschen";
